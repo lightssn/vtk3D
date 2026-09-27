@@ -45,16 +45,9 @@ cmake --build build
 ```
 
 ## 示例数据
-
-将 VTK 官方示例数据放置为：
-
-```text
-data/
-├─ FullHead.mhd
-├─ FullHead.raw.gz
-└─ FullHead.raw
-```
-
+https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.mhd
+https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.raw.gz
+需解压raw.gz为raw
 官方仓库用 gzip 保存像素文件；解压后 `FullHead.mhd` 内的 `ElementDataFile`
 指向 `FullHead.raw`。程序也支持通过
 “文件 → 打开体数据”从其他目录选择数据。
