@@ -1,78 +1,153 @@
 # vtk3D
+基于qt+vtk的ct切片读取重建程序
+	输入mhd数据
+	轴状、冠状、矢状三切片视图
+	皮肤/骨骼三维模型，可导出为stl
+	后台执行读取数据、表面重建、平滑
+	可设置平滑迭代数（0–100，默认 15）
 
-基于 Qt 与 VTK 的 CT 多平面显示和表面重建桌面程序。第一版参考 VTK
-`MedicalDemo3`，支持三个正交切片、皮肤/骨骼表面重建、STL 导出和日夜主题。
+#依赖
+	vcpkg install vtk[qt,opengl] (vcpkg的vtk默认依赖vcpkg的qt6，qt5或源码qt需在vcpkg创vtk的自定义port后，加--overlay-ports=.\port_custom)
 
-## 功能
-
-- 轴状、冠状、矢状三个切片视图，滚轮浏览切片
-- 同屏显示皮肤与骨骼三维模型
-- 分别控制组织可见性、透明度和等值阈值
-- 数据读取、表面重建和平滑在后台线程执行，状态栏显示阶段进度
-- 左侧调试面板可设置 `vtkWindowedSincPolyDataFilter` 迭代数（0–100，默认 15）
-- 将皮肤或骨骼表面导出为二进制 STL
-- 日间/夜间主题，选择自动保存
-- 自动加载 `data/FullHead.mhd`，也可以从菜单选择 `.mhd/.mha`
-
-## 依赖与构建
-
-已安装的 vcpkg 包应包含：
-
-```powershell
-vcpkg install vtk[qt,opengl]:x64-windows
-```
-
-`python` feature 对本 C++ 工程不是必需，但安装它不会影响使用。本机通过
-`ports_custom/vtk` overlay 将 VTK 9.3 构建为 Qt 5 版本；另一台机器可以使用官方
-Qt 6 版 VTK。工程读取 VTK 安装配置导出的 `VTK_QT_VERSION`，自动使用与 VTK ABI
-一致的 Qt 5 或 Qt 6。如果 VTK 没有导出受支持的版本，配置会直接失败，而不会猜测。
-不能把链接 Qt 6 的 VTK GUI 模块与 Qt 5 应用混合链接。当前机器的 vcpkg
-位于 `F:/source/vcpkg`，仓库内的 `CMakePresets.json` 已按该路径配置：
-
-```powershell
-cmake --preset vcpkg-release
-cmake --build --preset release
-./build/Release/vtk3D.exe
-```
-
-如果 vcpkg 位于其他目录，请修改 preset 中的 `CMAKE_TOOLCHAIN_FILE`，或者运行：
-
-```powershell
-cmake -S . -B build -G Ninja `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DCMAKE_TOOLCHAIN_FILE=<vcpkg-root>/scripts/buildsystems/vcpkg.cmake
-cmake --build build
-```
-
-## 示例数据
+#示例数据
 https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.mhd
 https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.raw.gz
 需解压raw.gz为raw
-官方仓库用 gzip 保存像素文件；解压后 `FullHead.mhd` 内的 `ElementDataFile`
-指向 `FullHead.raw`。程序也支持通过
-“文件 → 打开体数据”从其他目录选择数据。
+默认阈值500/1150是此数据偏移标量，非标准HU
 
-默认阈值 500/1150 是 `FullHead` 数据使用的偏移标量，并非未经转换的标准 HU。
-
-## 操作
-
-- 三个切片视图：鼠标滚轮切换切片。
-- 三维视图：左键旋转、滚轮缩放、中键平移。
-- STL：文件菜单中分别导出皮肤或骨骼。
-- `R` 重置相机，`Ctrl+T` 切换主题。
+#读取
+itk影像格式MetaImage：
+	头文件.mhd、同路径同名像素文件.raw
+	.mhd参数：
+		BinaryDataByteOrderMSB = False 小端序
+		TransformMatrix = -1 0 0 0 1 0 0 0 -1 图像轴3x3矩阵，xz翻转，y不变，决定体素坐标映射到物理空间方向
+		Offset = 0 0 0 图像原点物理坐标偏移
+		CenterOfRotation = 0 0 0 旋转中心坐标
+		AnatomicalOrientation = LAS 左前上解剖方向
+		ElementSpacing = 0.9375 0.9375 1.5 体素xyz物理间距，一般为毫米
+		DimSize = 256 256 94 xyz三方向体素数
+		ElementType = MET_SHORT 每体素为16位int
+		ElementDataFile = FullHead.raw 像素数据文件名
+	.raw存储：xyz三方向总计的体素值
+	用vtkMetaImageReader读取
+	vtk在找不到同名.raw时会找.raw.gz
+	
+实际临床ct数据：
+		每切片一个DICOM，含像素数据 检查 序列 患者坐标 层间距 重建参数元数据
+		用vtkDICOMImageReader读取
+	
+#类
+	主窗口类 QMainWindow MainWindow
+		构建界面 buildUi()
+	四视图类 QWidget MedicalViewer
+		buildUi()
+			初始化渲染窗口 new QVTKOpenGLNativeWidget(...)
+		切片面板结构体 SlicePane
+			保存标题 方向 控件 vtk窗口
+		表面实例结构体 SurfacePipeline
+			保存vtkPolyData，mapper，actor
+		导入 loadMetaImage()
+			QThread [
+				vtkMetaImageReader->SetFileName(...)
+				体素网格 vtkImageData
+				提取等值面 vtkFlyingEdges3D contour
+				平滑 vtkWindowedSincPolyDataFilter smoother
+				计算法线 vtkPolyDataNormals normals
+				模型网格 vtkPolyData
+				连接管线 smoother->SetInputConnection(contour->GetOutputPort());
+					依次连接，最后normals->Update()执行时，vtk沿管线向上，更新等值面-平滑-法线-网格
+				]
+			三个切片视图查看同一体数据不同方向
+			三维视图显示两份网格
+			actor 控制可见性、颜色、透明度
+			mapper 把网格数据交给渲染器绘制
+		调整阈值/平滑迭代数 requestReconstruction()
+			从已保存m_image重新提取网格，不读文件
+			若已有重建线程，会标记，结束后再处理
+		applyReconstruction()
+			vtkPolyDataMapper接收皮肤/骨骼vtkPolyData m_skin->mapper->SetInputData(skin);
+		导出 exportSurface()
+			vtkPolyData → vtkSTLWriter
+			
+		setSkinVisible()
+			m_skin->actor->SetVisibility(visible);
+		setSkinOpacity()
+			m_skin->actor->GetProperty()->SetOpacity(...)
+		renderAll()
+			Render();
+			
+		主题 setDarkTheme()
+		
+	主题类 ThemeManager
+		QSettings读/存主题
+	滚轮事件类 QObject SliceEventFilter
+		调整切片索引
+	
+#生命周期
+	main()
+		QApplication
+			MainWindow
+				ThemeManager
+				MedicalViewer
+					SlicePane
+					SurfacePipeline
+	
+#管线
+	vtkMetaImageReader读raw得vtkImageData
+	vtkFlyingEdges3D按皮肤/骨骼阈值提取等值面
+	sinc平滑+法线处理得vtkPolyData
+	映射到actor显示
+	vtkWindowedSincPolyDataFilter
+	vtkPolyDataNormals
+	mapper
+	
+	
+	标量场
+	Flying Edges
+	Marching Cubes
+	
+	vtk智能指针 vtkSmartPointer，非线程安全
+	vtkNew
+	vtkPolyData
+	
+#基础题
+	vtkImageData与vtkPolyData区别：
+		三维影像体素网格/带坐标三维网格
+		前者按阈值提取等值面得后者
+		
+	vtk管线机制：
+		SetInputConnection依次连接每个vtkNew
+		最后数据请求或Update()触发更新
+		
+	mapper/actor/renderer/render window分工：
+		vtkPolyDataMapper 映射器，接收数据，准备绘制
+		vtkActor 场景中对象，带颜色、透明度、材质
+		vtkRenderer 场景相机、灯光、背景，渲染图像
+		QVTKOpenGLNativeWidget 渲染窗口
+		
+	提取等值面：将符合阈值的三维体素连接为表面
+	OpenGL渲染线程：此项目是主线程，离屏渲染才用子线程渲染
+	
+	预防和排查内存泄露
+		qt父子对象、智能指针、任务回收、限制并发
+		用vs内存快照分析
+	平滑为何可能收缩或抹掉特征
+	法线如何影响光照：法线是面方向向量，朝向光源亮，背向光源暗
+	
+#进阶题
+	Flying Edges 相对经典 Marching Cubes 的并行和性能特点
+	阈值选取对表面拓扑和细节的影响
+	大体数据的内存和耗时瓶颈
+	后台计算与 GUI/OpenGL 线程的边界
 
 #TODO
-vcpkg install "vtk[qt,opengl,tbb]:x64-windows" --overlay-ports=F:\source\vcpkg\ports_custom
-vtkFlyingEdges3D 比传统 vtkMarchingCubes 更快，并且设计上适合多线程。当前已经使用 Flying Edges。
-但最终是否并行，还取决于 VTK 编译时启用的 SMP 后端：
-Sequential：单线程
-OpenMP：CPU 多线程
-TBB：CPU 多线程，通常是更好的选择
-STDThread：标准线程后端
-
-运行后可以用以下方式确认 SMP：
-#include <vtkSMPTools.h>
-qDebug() << "VTK SMP backend:"
-         << vtkSMPTools::GetBackend().c_str();
-qDebug() << "Estimated threads:"
-         << vtkSMPTools::GetEstimatedNumberOfThreads();
+	reader 错误检查、数据范围与维度检查
+	文件损坏检查
+	值得检查的是运行中关闭窗口：析构函数会对 QThread::create() 创建的线程调用 quit()、wait()；这里的计算函数没有运行线程事件循环，quit() 不会中断计算，wait() 会等它做完。线程对象依赖 finished → deleteLater() 回收，而 Qt 说明主事件循环停止后提交的延迟删除不会执行
+	改皮肤阈值只重建皮肤，改骨骼阈值只重建骨骼，并加入防抖，让m_rebuildPending 合并排队请求里旧请求不执行
+	透明度、显隐变化只重绘三维窗口
+	体数据读完就先显示切片，表面继续在后台生成
+	大网格交互时简化
+	
+#渲染
+	vtk可通过webgpu用vulkan后端，需构建时带RenderingWebGPU，vtk9.4起支持vtkWebGPURenderWindow

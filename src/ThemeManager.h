@@ -4,21 +4,20 @@
 
 class QApplication;
 
-class ThemeManager final : public QObject
-{
-    Q_OBJECT
+class ThemeManager final : public QObject {
+        Q_OBJECT
 
-public:
-    enum class Theme { Light, Dark };
+    public:
+        enum class Theme { Light, Dark };
 
-    explicit ThemeManager(QObject* parent = nullptr);
-    Theme theme() const noexcept;
-    void apply(QApplication* app, Theme theme);
+        explicit ThemeManager(QObject* parent = nullptr);
+        Theme theme() const noexcept;
+        void apply(QApplication* app, Theme theme);
 
-signals:
-    void themeChanged(bool dark);
+    signals:
+        void themeChanged(bool dark);
 
-private:
-    Theme m_theme = Theme::Dark;
-};
+    private:
+        Theme m_theme = Theme::Dark;
+    };
 

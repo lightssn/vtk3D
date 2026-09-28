@@ -235,12 +235,15 @@ bool MedicalViewer::loadMetaImage(const QString& fileName, QString* errorMessage
             };
         try {
             progress(5, QObject::tr("读取 MetaImage 数据"));
-            vtkNew<vtkMetaImageReader> reader;
-            reader->SetFileName(absolutePath.toUtf8().constData());
-            reader->Update();
-            vtkSmartPointer<vtkImageData> image = vtkSmartPointer<vtkImageData>::New();
-            image->DeepCopy(reader->GetOutput());
-            if (image->GetNumberOfPoints() == 0) throw std::runtime_error("No volume data");
+            vtkSmartPointer<vtkImageData> image;
+            {
+                vtkNew<vtkMetaImageReader> reader;
+                reader->SetFileName(absolutePath.toUtf8().constData());
+                reader->Update();
+                image = reader->GetOutput();
+                if (!image || image->GetNumberOfPoints() == 0)
+                    throw std::runtime_error("No volume data");
+                }
 
             auto build = [&](double threshold, int base, const QString& label) {
                 progress(base, QObject::tr("提取%1等值面").arg(label));
@@ -261,8 +264,7 @@ bool MedicalViewer::loadMetaImage(const QString& fileName, QString* errorMessage
                 normals->ConsistencyOn();
                 normals->AutoOrientNormalsOn();
                 normals->Update();
-                vtkSmartPointer<vtkPolyData> result = vtkSmartPointer<vtkPolyData>::New();
-                result->DeepCopy(normals->GetOutput());
+                vtkSmartPointer<vtkPolyData> result = normals->GetOutput();
                 return result;
                 };
             auto skin = build(skinThreshold, 20, QObject::tr("皮肤"));
@@ -300,8 +302,7 @@ void MedicalViewer::requestReconstruction() {
     startReconstruction(m_image, m_loadedFile, false);
     }
 
-void MedicalViewer::startReconstruction(vtkSmartPointer<vtkImageData> image,
-                                        const QString& fileName, bool isNewData) {
+void MedicalViewer::startReconstruction(vtkSmartPointer<vtkImageData> image, const QString& fileName, bool isNewData) {
     emit operationStarted(tr("正在后台重建表面…"));
     QPointer<MedicalViewer> self(this);
     const double skinThreshold = m_skin->threshold;
@@ -326,8 +327,7 @@ void MedicalViewer::startReconstruction(vtkSmartPointer<vtkImageData> image,
             normals->AutoOrientNormalsOn();
             normals->ConsistencyOn();
             normals->Update();
-            vtkSmartPointer<vtkPolyData> result = vtkSmartPointer<vtkPolyData>::New();
-            result->DeepCopy(normals->GetOutput());
+            vtkSmartPointer<vtkPolyData> result = normals->GetOutput();
             return result;
             };
         auto skin = build(skinThreshold, 15, QObject::tr("皮肤表面"));
@@ -347,10 +347,7 @@ void MedicalViewer::startReconstruction(vtkSmartPointer<vtkImageData> image,
     m_workerThread->start();
     }
 
-void MedicalViewer::applyReconstruction(vtkSmartPointer<vtkImageData> image,
-                                        vtkSmartPointer<vtkPolyData> skin,
-                                        vtkSmartPointer<vtkPolyData> bone,
-                                        const QString& fileName, bool isNewData) {
+void MedicalViewer::applyReconstruction(vtkSmartPointer<vtkImageData> image, vtkSmartPointer<vtkPolyData> skin, vtkSmartPointer<vtkPolyData> bone, const QString& fileName, bool isNewData) {
     m_image = image;
     m_skin->data = skin;
     m_bone->data = bone;
@@ -482,23 +479,23 @@ bool MedicalViewer::exportSurface(SurfacePipeline& surface, const QString& fileN
     emit operationStarted(tr("正在后台写入 STL…"));
     m_workerThread = QThread::create([self, data, target] {
         if (self) QMetaObject::invokeMethod(self, [self] {
-            if (self) emit self->operationProgress(35, QObject::tr("正在编码三角网格"));
+        if (self) emit self->operationProgress(35, QObject::tr("正在编码三角网格"));
             }, Qt::QueuedConnection);
-        vtkNew<vtkSTLWriter> writer;
-        writer->SetFileName(target.toUtf8().constData());
-        writer->SetInputData(data);
-        writer->SetFileTypeToBinary();
-        writer->Write();
-        const bool ok = writer->GetErrorCode() == 0;
-        if (self) QMetaObject::invokeMethod(self, [self, ok, target] {
-            if (!self) return;
+    vtkNew<vtkSTLWriter> writer;
+    writer->SetFileName(target.toUtf8().constData());
+    writer->SetInputData(data);
+    writer->SetFileTypeToBinary();
+    writer->Write();
+    const bool ok = writer->GetErrorCode() == 0;
+    if (self) QMetaObject::invokeMethod(self, [self, ok, target] {
+        if (!self) return;
             if (ok) {
                 emit self->operationProgress(100, QObject::tr("STL 写入完成"));
-                emit self->operationFinished(QObject::tr("已导出：%1").arg(target));
-                }
-            else {
-                emit self->operationFailed(QObject::tr("STL 文件写入失败：%1").arg(target));
-                }
+                    emit self->operationFinished(QObject::tr("已导出：%1").arg(target));
+                    }
+                else {
+                    emit self->operationFailed(QObject::tr("STL 文件写入失败：%1").arg(target));
+                    }
             }, Qt::QueuedConnection);
         });
     connect(m_workerThread, &QThread::finished, m_workerThread, &QObject::deleteLater);
