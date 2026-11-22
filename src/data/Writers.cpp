@@ -70,7 +70,9 @@ void ProjectRepository::save(const ProjectData &project, const QString &path) co
     writer->UseCompressionOn();
     writer->Update();
     json["source"] = project.volume.source;
+    json["patientCoordinates"] = project.volume.patientCoordinates;
     json["processing"] = project.processing;
+    json["statistics"] = project.statistics;
     QJsonArray labelInfo;
     for (const auto &label : project.segmentation.labels)
         labelInfo.append(QJsonObject{{"value", label.value},
@@ -108,7 +110,9 @@ ProjectData ProjectRepository::load(const QString &path) const {
     ProjectData out;
     out.volume = VolumeReader().read(assets.filePath("volume.mha"));
     out.volume.source = json["source"].toString();
+    out.volume.patientCoordinates = json["patientCoordinates"].toBool();
     out.processing = json["processing"].toObject();
+    out.statistics = json["statistics"].toObject();
     if (json["labels"].toBool()) {
         auto reader = itk::ImageFileReader<LabelImage>::New();
         reader->SetFileName(assets.filePath("labels.mha").toUtf8().constData());

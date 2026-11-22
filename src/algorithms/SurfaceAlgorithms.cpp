@@ -54,29 +54,56 @@ vtkSmartPointer<vtkImageData> ImageBridge::toVtk(const VolumeData &v) {
 vtkSmartPointer<vtkImageData> ImageBridge::toVtk(const SegmentationData &v) {
     return convert(v.image.GetPointer(), VTK_UNSIGNED_SHORT);
 }
-vtkSmartPointer<vtkImageData> ImageBridge::forDisplay(const VolumeData &v) {
+vtkSmartPointer<vtkImageData> ImageBridge::forDisplay(const VolumeData &v, const Task &task) {
+    task.check();
     auto input = toVtk(v);
     double bounds[6];
     input->GetBounds(bounds);
     const auto *spacing = input->GetSpacing();
+    int extent[6] = {};
+    double voxels = 1;
+    for (int axis = 0; axis < 3; ++axis) {
+        const double maximum = std::ceil((bounds[2*axis+1] - bounds[2*axis]) / spacing[axis]);
+        voxels *= maximum + 1;
+        if (!std::isfinite(voxels) || maximum < 0 || voxels > 256.0 * 1024 * 1024)
+            throw std::runtime_error("Display resampling exceeds 256M voxels");
+        extent[2*axis+1] = static_cast<int>(maximum);
+    }
     vtkNew<vtkImageReslice> reslice;
     reslice->SetInputData(input);
     reslice->SetOutputDirection(1, 0, 0, 0, 1, 0, 0, 0, 1);
     reslice->SetOutputOrigin(bounds[0], bounds[2], bounds[4]);
     reslice->SetOutputSpacing(spacing);
-    reslice->SetOutputExtent(0, static_cast<int>(std::ceil((bounds[1] - bounds[0]) / spacing[0])), 0,
-                             static_cast<int>(std::ceil((bounds[3] - bounds[2]) / spacing[1])), 0,
-                             static_cast<int>(std::ceil((bounds[5] - bounds[4]) / spacing[2])));
+    reslice->SetOutputExtent(extent);
     reslice->SetInterpolationModeToLinear();
     reslice->SetBackgroundLevel(-1024);
-    reslice->Update();
+    execute(reslice.GetPointer(), task);
     vtkSmartPointer<vtkImageData> result = reslice->GetOutput();
     return result;
+}
+vtkSmartPointer<vtkImageData> ImageBridge::labelsForDisplay(const SegmentationData &v,
+                                                         vtkImageData *reference, const Task &task) {
+    if (!v.image || !reference)
+        return nullptr;
+    task.check();
+    vtkNew<vtkImageReslice> reslice;
+    reslice->SetInputData(toVtk(v));
+    reslice->SetOutputDirection(reference->GetDirectionMatrix()->GetData());
+    reslice->SetOutputOrigin(reference->GetOrigin());
+    reslice->SetOutputSpacing(reference->GetSpacing());
+    reslice->SetOutputExtent(reference->GetExtent());
+    reslice->SetInterpolationModeToNearestNeighbor();
+    reslice->SetBackgroundLevel(0);
+    execute(reslice.GetPointer(), task);
+    return reslice->GetOutput();
 }
 SurfaceData SurfaceReconstructor::run(vtkImageData *image, const ReconstructionParameter &p,
                                       const Task &task) const {
     if (!image)
         throw std::runtime_error("No reconstruction image");
+    const int *dimensions = image->GetDimensions();
+    if (dimensions[0] < 2 || dimensions[1] < 2 || dimensions[2] < 2)
+        return {vtkSmartPointer<vtkPolyData>::New()}; // Single slices have no 3D surface.
     task.report(60, "VTK surface extraction");
     vtkNew<vtkFlyingEdges3D> filter;
     filter->SetInputData(image);

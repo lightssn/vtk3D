@@ -7,13 +7,13 @@
 	可设置平滑迭代数（0–100，默认 15）
 
 #依赖
-	vcpkg install vtk[qt,opengl] (vcpkg的vtk默认依赖vcpkg的qt6，qt5或源码qt需在vcpkg创vtk的自定义port后，加--overlay-ports=.\port_custom)
+	vcpkg install itk[vtk] --overlay-ports=C:\code\vtk3D\vcpkg-overlays\ports
+	vcpkg install vtk[qt,opengl] (vcpkg的itk+vtk默认依赖vcpkg的qt6，qt5或源码qt需手动在vcpkg创vtk的自定义port，然后加--overlay-ports=.\port_custom)
+	
+#目录
+	data/data.txt 数据说明
 
-#示例数据
-https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.mhd
-https://gitlab.kitware.com/vtk/vtk-examples/-/raw/master/src/Testing/Data/FullHead.raw.gz
-需解压raw.gz为raw
-默认阈值500/1150是此数据偏移标量，非标准HU
+
 
 #读取
 itk影像格式MetaImage：
@@ -26,7 +26,7 @@ itk影像格式MetaImage：
 		AnatomicalOrientation = LAS 左前上解剖方向
 		ElementSpacing = 0.9375 0.9375 1.5 体素xyz物理间距，一般为毫米
 		DimSize = 256 256 94 xyz三方向体素数
-		ElementType = MET_SHORT 每体素为16位int
+		ElementType = MET_SHORT 每体素为16位int 2字节
 		ElementDataFile = FullHead.raw 像素数据文件名
 	.raw存储：xyz三方向总计的体素值
 	用vtkMetaImageReader读取
@@ -35,8 +35,15 @@ itk影像格式MetaImage：
 实际临床ct数据：
 		每切片一个DICOM，含像素数据 检查 序列 患者坐标 层间距 重建参数元数据
 		用vtkDICOMImageReader读取
-	
-#类
+
+#交互层
+	主窗口 MainWindow
+	四视图 FourViewer
+	切片视图 SliceView
+	三维视图 SurfaceView
+	分割/重建/显示参数 ParameterPanel
+	主题 ThemeManager
+		
 	主窗口类 QMainWindow MainWindow
 		构建界面 buildUi()
 	四视图类 QWidget MedicalViewer
@@ -45,7 +52,7 @@ itk影像格式MetaImage：
 		切片面板结构体 SlicePane
 			保存标题 方向 控件 vtk窗口
 		表面实例结构体 SurfacePipeline
-			保存vtkPolyData，mapper，actor
+			保存 vtkPolyData，mapper，actor
 		导入 loadMetaImage()
 			QThread [
 				vtkMetaImageReader->SetFileName(...)
@@ -56,7 +63,7 @@ itk影像格式MetaImage：
 				模型网格 vtkPolyData
 				连接管线 smoother->SetInputConnection(contour->GetOutputPort());
 					依次连接，最后normals->Update()执行时，vtk沿管线向上，更新等值面-平滑-法线-网格
-				]
+				] 通过值捕获传递智能指针
 			三个切片视图查看同一体数据不同方向
 			三维视图显示两份网格
 			actor 控制可见性、颜色、透明度
@@ -77,60 +84,58 @@ itk影像格式MetaImage：
 			Render();
 			
 		主题 setDarkTheme()
-		
 	主题类 ThemeManager
 		QSettings读/存主题
 	滚轮事件类 QObject SliceEventFilter
 		调整切片索引
-	
-#生命周期
-	main()
-		QApplication
-			MainWindow
-				ThemeManager
-				MedicalViewer
-					SlicePane
-					SurfacePipeline
-	
-#管线
-	vtkMetaImageReader读raw得vtkImageData
-	vtkFlyingEdges3D按皮肤/骨骼阈值提取等值面
-	sinc平滑+法线处理得vtkPolyData
-	映射到actor显示
-	vtkWindowedSincPolyDataFilter
-	vtkPolyDataNormals
-	mapper
-	
-	
-	标量场
-	Flying Edges
-	Marching Cubes
-	
-	vtk智能指针 vtkSmartPointer，非线程安全
-	vtkNew
-	vtkPolyData
-	
-#基础题
-	vtkImageData与vtkPolyData区别：
-		三维影像体素网格/带坐标三维网格
-		前者按阈值提取等值面得后者
 		
-	vtk管线机制：
-		SetInputConnection依次连接每个vtkNew
-		最后数据请求或Update()触发更新
-		
-	mapper/actor/renderer/render window分工：
-		vtkPolyDataMapper 映射器，接收数据，准备绘制
-		vtkActor 场景中对象，带颜色、透明度、材质
-		vtkRenderer 场景相机、灯光、背景，渲染图像
-		QVTKOpenGLNativeWidget 渲染窗口
-		
-	提取等值面：将符合阈值的三维体素连接为表面
-	OpenGL渲染线程：此项目是主线程，离屏渲染才用子线程渲染
+#服务层
+	项目管理 ProjectService
+	导入 ImportService
+	处理 ProcessingService
+	导出 ExportService
+
+#数据层	
+	项目 ProjectData
+	体数据 VolumeData
+	分割标签 SegmentationData
+	表面网格 SurfaceData
+	
+	读取单影像 VolumeReader .mhd .mha .nrrd .nifti
+	读取DICOM序列 DicomReader .raw
+	
+	标签转影像 SegmentationWriter
+		.mha .nii.gz .nrrd
+	STL导出器 SurfaceWriter .stl .vtp .obj .ply
+	项目备份 ProjectRepository
+	几何体 VolumeGeometrySt
+	标签体 LabelInfoSt
+	
+#算法层
+	ITK
+	去噪 重采样 VolumePreprocessor PreprocessingParameter
+	分割 连通域筛选 形态学处理 VolumeSegmenter SegmentationParameter
+	配准 VolumeRegistrator RegistrationParameter
+	
+	ITK转VTK ImageBridge
+	
+	VTK
+	提取等值面 SurfaceReconstructor ReconstructionParameter
+	网格平滑 简化 法线 SurfaceProcessor SurfaceProcessingParameter
+
+#基础层
+	任务 Task
+	任务调度 TaskManager
+	日志 Logger
+	配置 Settings
+	
+#问题
+	十字线联动 防递归
 	
 	预防和排查内存泄露
 		qt父子对象、智能指针、任务回收、限制并发
 		用vs内存快照分析
+		
 	平滑为何可能收缩或抹掉特征
 	法线如何影响光照：法线是面方向向量，朝向光源亮，背向光源暗
 	
@@ -148,6 +153,23 @@ itk影像格式MetaImage：
 	透明度、显隐变化只重绘三维窗口
 	体数据读完就先显示切片，表面继续在后台生成
 	大网格交互时简化
+	
+|  |  |
+|---|---|
+| 基础阅片 | 多检查、多序列、多屏、平铺/层叠、自定义挂片布局 |
+| 图像操作 | 窗宽窗位、缩放、平移、旋转、翻转、负片 |
+| 测量标注 | 长度、角度、心胸比、面积、周长、CT 值、文字与箭头 |
+| 序列联动 | 关联滚动、同步二维操作、交叉定位线 |
+| 数据操作 | DICOM 标签查看、图像导出、发送至 DICOM 节点 |
+|---|---|
+| 影像浏览 | 窗宽窗位、斜切 MPR、厚层投影、曲面重建 |
+| 三维显示 | 体绘制、传递函数、裁剪、剖切 |
+| 分割编辑 | 画笔、擦除、区域生长、多标签、人工修正 |
+| 测量分析 | 角度、轮廓、统计、时间序列比较 |
+| 配准融合 | 刚体、仿射、形变、多影像叠加 |
+| 临床工作流 | 患者与检查管理、PACS 通信、报告 |
+| 专科工具 | 血管、骨科、肿瘤、放疗等特定流程 |
+| 产品工程 | 撤销重做、自动恢复、审计、权限和质量验证 |
 	
 #渲染
 	vtk可通过webgpu用vulkan后端，需构建时带RenderingWebGPU，vtk9.4起支持vtkWebGPURenderWindow

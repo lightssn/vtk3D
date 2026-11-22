@@ -31,7 +31,7 @@ class ImportService {
 };
 class ProcessingService {
   public:
-    vtkSmartPointer<vtkImageData> displayImage(const VolumeData &) const;
+    vtkSmartPointer<vtkImageData> displayImage(const VolumeData &, const Task & = {}) const;
     ProjectData process(const ProjectData &, float skinThreshold, float boneThreshold,
                         const PreprocessingParameter &, const SegmentationParameter &,
                         const SurfaceProcessingParameter &, const Task & = {}) const;

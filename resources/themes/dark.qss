@@ -30,12 +30,30 @@ QStatusBar { background: #101821; color: #8494a3; border-top: 1px solid #25313c;
 #boneDot { color: #ede7c9; }
 #valueLabel { color: #42d7c3; font-size: 11px; }
 QCheckBox { spacing: 8px; }
+#processButton { background: #21ae9e; color: #061a1a; border: 0; border-radius: 7px; font-weight: 700; padding: 9px; }
+#processButton:hover { background: #3bd0bd; }
+#processButton[busy="true"] { background: #683c34; color: #ffe0d6; }
+#processButton[busy="true"]:hover { background: #814c41; }
+#measurementMode, #measurementEdit { background: #17232d; color: #c8d6df; border: 1px solid #31414d; border-radius: 6px; padding: 7px 4px; }
+#measurementMode:checked { background: #193f47; color: #62e5d2; border-color: #34cdb8; font-weight: 700; }
+#measurementMode:hover, #measurementEdit:hover { border-color: #34cdb8; }
+#analysisBar { background: #111c26; border: 1px solid #293946; border-radius: 8px; }
+#analysisBar #coordinateReadout { background: transparent; border: 0; padding: 0; font-size: 11px; }
+#analysisBar #statistics, #measurementHint { font-size: 11px; color: #9bb7c6; }
+#analysisSeparator { background: #31414d; border: 0; min-width: 1px; max-width: 1px; margin: 0 5px; }
 QCheckBox::indicator { width: 17px; height: 17px; border-radius: 4px; border: 1px solid #49606e; background: #0c141c; }
 QCheckBox::indicator:checked { background: #27b9a7; border-color: #27b9a7; }
 QSlider::groove:horizontal { height: 4px; background: #2b3b47; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: #31c5b2; border-radius: 2px; }
 QSlider::handle:horizontal { background: #dffaf6; width: 14px; margin: -5px 0; border-radius: 7px; }
-QSpinBox { background: #0c141c; border: 1px solid #31434f; border-radius: 5px; padding: 4px 6px; color: #cad7df; }
+QSpinBox, QDoubleSpinBox { background: #0c141c; border: 1px solid #31434f; border-radius: 5px; padding: 4px 6px; color: #cad7df; }
 QToolTip { background: #17232d; color: #e2edf2; border: 1px solid #3a4d59; padding: 4px; }
 QProgressBar { background: #263541; border: 0; border-radius: 3px; height: 6px; }
 QProgressBar::chunk { background: #31c5b2; border-radius: 3px; }
+
+#sidebarScroll { background: transparent; border: 0; }
+QLabel { background: transparent; }
+#coordinateReadout { background: #111c26; border: 1px solid #293946; border-radius: 7px; }
+#coordinateReadout { padding: 7px 12px; color: #9bb7c6; font-size: 12px; }
+#statistics { color: #9bb7c6; font-size: 12px; line-height: 1.5; }
+QPushButton:disabled { color: #657783; background: #18212a; }

@@ -23,6 +23,7 @@ struct LabelInfoSt {
 struct VolumeData {
     VolumeImage::Pointer image;
     QString source;
+    bool patientCoordinates = false; // Only asserted when provenance establishes LPS.
     VolumeGeometrySt geometry() const;
 };
 struct SegmentationData {
@@ -38,4 +39,5 @@ struct ProjectData {
     SegmentationData segmentation;
     SurfaceData skin, bone;
     QJsonObject processing;
+    QJsonObject statistics;
 };

@@ -4,9 +4,11 @@
 #include <QMainWindow>
 class FourViewer;
 class ParameterPanel;
+class AnalysisBar;
 class ThemeManager;
 class QLabel;
 class QProgressBar;
+class QCloseEvent;
 class MainWindow final : public QMainWindow {
     Q_OBJECT
   public:
@@ -20,6 +22,9 @@ class MainWindow final : public QMainWindow {
     void dataReady();
     void taskFailed(const QString &);
 
+  protected:
+    void closeEvent(QCloseEvent *) override;
+
   private:
     void process();
     void showProject();
@@ -29,13 +34,16 @@ class MainWindow final : public QMainWindow {
     void saveProject();
     FourViewer *m_viewer;
     ParameterPanel *m_parameters;
+    AnalysisBar *m_analysis;
     ThemeManager *m_theme;
     QLabel *m_status;
     QProgressBar *m_progress;
     ProjectService m_project;
     vtkSmartPointer<vtkImageData> m_displayImage;
+    vtkSmartPointer<vtkImageData> m_displayLabels;
     ImportService m_import;
     ProcessingService m_processing;
     ExportService m_export;
     TaskManager m_tasks;
+    bool m_closePending = false;
 };

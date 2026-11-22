@@ -20,7 +20,9 @@ class VolumeRegistrator {
 namespace ImageBridge {
 vtkSmartPointer<vtkImageData> toVtk(const VolumeData &);
 vtkSmartPointer<vtkImageData> toVtk(const SegmentationData &);
-vtkSmartPointer<vtkImageData> forDisplay(const VolumeData &);
+vtkSmartPointer<vtkImageData> forDisplay(const VolumeData &, const Task & = {});
+vtkSmartPointer<vtkImageData> labelsForDisplay(const SegmentationData &, vtkImageData *reference,
+                                             const Task & = {});
 } // namespace ImageBridge
 class SurfaceReconstructor {
   public:

@@ -1,4 +1,5 @@
 #include "ImagingAlgorithms.h"
+#include "foundation/ItkTask.h"
 #include <cmath>
 #include <itkBinaryBallStructuringElement.h>
 #include <itkBinaryMorphologicalClosingImageFilter.h>
@@ -15,30 +16,6 @@
 #include <itkResampleImageFilter.h>
 #include <itkTranslationTransform.h>
 
-namespace {
-class CancellationObserver : public itk::Command {
-  public:
-    using Self = CancellationObserver;
-    using Pointer = itk::SmartPointer<Self>;
-    itkNewMacro(Self);
-    Task task;
-    void Execute(itk::Object *, const itk::EventObject &) override {
-        task.check();
-    }
-    void Execute(const itk::Object *, const itk::EventObject &) override {
-        task.check();
-    }
-};
-template <class T> void update(T *process, const Task &task) {
-    auto observer = CancellationObserver::New();
-    observer->task = task;
-    process->AddObserver(itk::ProgressEvent(), observer);
-    process->AddObserver(itk::IterationEvent(), observer);
-    task.check();
-    process->Update();
-    task.check();
-}
-} // namespace
 
 VolumeData VolumePreprocessor::run(const VolumeData &input, const PreprocessingParameter &p,
                                    const Task &task) const {
@@ -55,7 +32,7 @@ VolumeData VolumePreprocessor::run(const VolumeData &input, const PreprocessingP
         radius.Fill(p.medianRadius);
         filter->SetRadius(radius);
         filter->SetInput(input.image);
-        update(filter.GetPointer(), task);
+        updateWithTask(filter.GetPointer(), task);
         out.image = filter->GetOutput();
         out.image->DisconnectPipeline();
     }
@@ -69,16 +46,20 @@ VolumeData VolumePreprocessor::run(const VolumeData &input, const PreprocessingP
         auto spacing = out.image->GetSpacing();
         spacing.Fill(p.isotropicSpacing);
         auto size = out.image->GetLargestPossibleRegion().GetSize();
-        for (unsigned i = 0; i < 3; ++i)
-            size[i] = static_cast<itk::SizeValueType>(
-                          std::ceil((size[i] - 1) * out.image->GetSpacing()[i] / spacing[i])) +
-                      1;
+        double voxels = 1;
+        for (unsigned i = 0; i < 3; ++i) {
+            const double dimension = std::ceil((size[i] - 1) * out.image->GetSpacing()[i] / spacing[i]) + 1;
+            voxels *= dimension;
+            if (!std::isfinite(voxels) || dimension < 1 || voxels > 256.0 * 1024 * 1024)
+                throw std::runtime_error("Resampling exceeds 256M voxels; increase output spacing");
+            size[i] = static_cast<itk::SizeValueType>(dimension);
+        }
         filter->SetSize(size);
         filter->SetOutputSpacing(spacing);
         filter->SetOutputOrigin(out.image->GetOrigin());
         filter->SetOutputDirection(out.image->GetDirection());
         filter->SetTransform(itk::IdentityTransform<double, 3>::New());
-        update(filter.GetPointer(), task);
+        updateWithTask(filter.GetPointer(), task);
         out.image = filter->GetOutput();
         out.image->DisconnectPipeline();
     }
@@ -97,7 +78,7 @@ SegmentationData VolumeSegmenter::run(const VolumeData &input, const Segmentatio
     threshold->SetUpperThreshold(p.upper);
     threshold->SetInsideValue(1);
     threshold->SetOutsideValue(0);
-    update(threshold.GetPointer(), task);
+    updateWithTask(threshold.GetPointer(), task);
     SegmentationData result;
     result.image = threshold->GetOutput();
     result.image->DisconnectPipeline();
@@ -116,7 +97,7 @@ SegmentationData VolumeSegmenter::run(const VolumeData &input, const Segmentatio
         select->SetUpperThreshold(1);
         select->SetInsideValue(1);
         select->SetOutsideValue(0);
-        update(select.GetPointer(), task);
+        updateWithTask(select.GetPointer(), task);
         result.image = select->GetOutput();
         result.image->DisconnectPipeline();
     }
@@ -132,7 +113,7 @@ SegmentationData VolumeSegmenter::run(const VolumeData &input, const Segmentatio
         closing->SetInput(result.image);
         closing->SetKernel(kernel);
         closing->SetForegroundValue(1);
-        update(closing.GetPointer(), task);
+        updateWithTask(closing.GetPointer(), task);
         result.image = closing->GetOutput();
         result.image->DisconnectPipeline();
     }
@@ -172,15 +153,15 @@ VolumeData VolumeRegistrator::run(const VolumeData &fixed, const VolumeData &mov
     auto observer = CancellationObserver::New();
     observer->task = task;
     optimizer->AddObserver(itk::IterationEvent(), observer);
-    update(registration.GetPointer(), task);
+    updateWithTask(registration.GetPointer(), task);
     auto resample = itk::ResampleImageFilter<VolumeImage, VolumeImage>::New();
     resample->SetInput(moving.image);
     resample->SetReferenceImage(fixed.image);
     resample->UseReferenceImageOn();
     resample->SetTransform(transform);
     resample->SetDefaultPixelValue(-1024);
-    update(resample.GetPointer(), task);
-    VolumeData out{resample->GetOutput(), moving.source};
+    updateWithTask(resample.GetPointer(), task);
+    VolumeData out{resample->GetOutput(), moving.source, fixed.patientCoordinates};
     out.image->DisconnectPipeline();
     return out;
 }

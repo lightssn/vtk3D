@@ -18,6 +18,7 @@ find_package(VTK REQUIRED COMPONENTS
     FiltersSources
     GUISupportQt
     ImagingCore
+    ImagingColor
     ImagingGeneral
     ImagingSources
     IOImage
@@ -55,11 +56,13 @@ add_library(Foundation STATIC src/foundation/TaskManager.cpp src/foundation/Task
 target_include_directories(Foundation PUBLIC src)
 target_link_libraries(Foundation PUBLIC Qt${VTK_QT_VERSION}::Core)
 
-add_library(ImagingData STATIC src/data/ProjectData.cpp src/data/Readers.cpp src/data/Writers.cpp)
+add_library(ImagingData STATIC src/data/ProjectData.cpp src/data/Readers.cpp src/data/Writers.cpp
+    src/foundation/ItkTask.h)
 target_link_libraries(ImagingData PUBLIC Foundation ${ITK_LIBRARIES}
     VTK::CommonDataModel VTK::IOGeometry VTK::IOPLY VTK::IOXML)
 
-add_library(ImagingAlgorithms STATIC src/algorithms/VolumeAlgorithms.cpp src/algorithms/SurfaceAlgorithms.cpp)
+add_library(ImagingAlgorithms STATIC src/algorithms/VolumeAlgorithms.cpp src/algorithms/SurfaceAlgorithms.cpp
+    src/algorithms/MeasurementGeometry.h)
 target_link_libraries(ImagingAlgorithms PUBLIC ImagingData VTK::FiltersCore VTK::FiltersGeneral VTK::ImagingCore)
 
 add_library(AppServices STATIC src/services/Services.cpp src/services/Services.h)
@@ -67,11 +70,13 @@ target_link_libraries(AppServices PUBLIC ImagingAlgorithms)
 
 add_executable(vtk3D WIN32
     src/main.cpp
+    tests/UiChecks.cpp tests/UiChecks.h
     src/ui/MainWindow.cpp src/ui/MainWindow.h
     src/ui/FourViewer.cpp src/ui/FourViewer.h
     src/ui/SliceView.cpp src/ui/SliceView.h
     src/ui/SurfaceView.cpp src/ui/SurfaceView.h
     src/ui/ParameterPanel.cpp src/ui/ParameterPanel.h
+    src/ui/AnalysisBar.cpp src/ui/AnalysisBar.h
     src/ui/ThemeManager.cpp src/ui/ThemeManager.h
     resources/resources.qrc
 )

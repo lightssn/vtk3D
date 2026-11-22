@@ -1,4 +1,5 @@
 #include "Readers.h"
+#include "foundation/ItkTask.h"
 #include <QFileInfo>
 #include <cmath>
 #include <itkGDCMImageIO.h>
@@ -27,7 +28,7 @@ VolumeData VolumeReader::read(const QString &path, const Task &task) const {
     task.report(5, "ITK reading volume");
     auto reader = itk::ImageFileReader<VolumeImage>::New();
     reader->SetFileName(file.absoluteFilePath().toUtf8().constData());
-    reader->Update();
+    updateWithTask(reader.GetPointer(), task);
     return validated(reader->GetOutput(), file.absoluteFilePath(), task);
 }
 QStringList DicomReader::series(const QString &directory) const {
@@ -52,6 +53,8 @@ VolumeData DicomReader::read(const QString &directory, const QString &uid, const
     auto reader = itk::ImageSeriesReader<VolumeImage>::New();
     reader->SetImageIO(itk::GDCMImageIO::New());
     reader->SetFileNames(names->GetFileNames(uid.isEmpty() ? ids.front() : uid.toStdString()));
-    reader->Update();
-    return validated(reader->GetOutput(), directory, task);
+    updateWithTask(reader.GetPointer(), task);
+    auto result = validated(reader->GetOutput(), directory, task);
+    result.patientCoordinates = true;
+    return result;
 }
